@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><meta name="theme-color" content="#0a0806"><title>Controle de Arma — Giroscópio</title>
+<style>
+:root{color-scheme:dark;--g:#d9a441}*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top,#3a2610,#050302 65%);color:#e8d9b8;font:16px system-ui,sans-serif;min-height:100vh;padding:22px;display:flex;align-items:center;justify-content:center;touch-action:manipulation}.app{width:min(520px,100%);text-align:center}h1{font:800 clamp(24px,7vw,34px) Georgia,serif;color:var(--g);margin:0 0 6px}p{opacity:.8;line-height:1.45}.status{padding:12px;border:1px solid #6e5a3a;border-radius:12px;background:#140d06;margin:16px 0}.lamp{display:inline-block;width:10px;height:10px;border-radius:50%;background:#ff4b38;margin-right:8px}button{width:100%;padding:16px;margin:7px 0;border-radius:14px;border:1px solid var(--g);background:#241608;color:#e8d9b8;font-weight:750;font-size:16px}button.primary{background:var(--g);color:#1a1008}.row{display:grid;grid-template-columns:1fr 1fr;gap:10px}.row button{font-size:14px}.readings{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:18px 0}.readings div{background:#140d06;border:1px solid #4a3a22;border-radius:12px;padding:12px 4px}.readings b{display:block;font-size:24px;color:var(--g)}small{opacity:.7}.note{font-size:13px;opacity:.65}
+</style></head><body><main class="app"><h1>CONTROLE DE ARMA</h1><p>Segure o celular como o cabo da arma: a parte de cima do celular é a lâmina.</p>
+<div class="status"><span class="lamp" id="lamp"></span><b id="status">Desconectado</b><div id="sub" class="note">Digite o código que aparece no jogo</div></div>
+<input id="code" maxlength="4" placeholder="CÓDIGO DO JOGO" autocapitalize="characters" style="width:100%;padding:14px;margin:7px 0;border-radius:14px;border:1px solid #d9a441;background:#140d06;color:#e8d9b8;font-size:20px;text-align:center;letter-spacing:6px"><button class="primary" id="connect">1 · CONECTAR AO JOGO</button><button id="sensor">2 · ATIVAR GIROSCÓPIO</button>
+<div class="row"><button id="calibrate">CALIBRAR (LÂMINA PARA CIMA)</button><button id="switch">CONTROLANDO: BRAÇO DIREITO</button></div>
+<div class="readings"><div><small>INCLINAÇÃO</small><b id="beta">0°</b></div><div><small>LATERAL</small><b id="gamma">0°</b></div><div><small>ROTAÇÃO</small><b id="alpha">0°</b></div></div>
+<p class="note">Segure o celular em pé, tela virada para você, e toque em calibrar. Gire o pulso para balançar: a rotação do celular é copiada 1:1 para a arma, com peso e inércia no jogo. Se o navegador pedir permissão para sensores, aceite.</p>
+</main><script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.4/peerjs.min.js"></script><script>
+const D=Math.PI/180,qa=(i,a)=>{const r=[0,0,0,Math.cos(a/2)];r[i]=Math.sin(a/2);return r},
+qm=(a,b)=>[a[3]*b[0]+a[0]*b[3]+a[1]*b[2]-a[2]*b[1],a[3]*b[1]-a[0]*b[2]+a[1]*b[3]+a[2]*b[0],a[3]*b[2]+a[0]*b[1]-a[1]*b[0]+a[2]*b[3],a[3]*b[3]-a[0]*b[0]-a[1]*b[1]-a[2]*b[2]],
+qi=a=>[-a[0],-a[1],-a[2],a[3]],Q1=[-Math.SQRT1_2,0,0,Math.SQRT1_2];
+let conn=null,arm=0,bq=[0,0,0,1],curQ=[0,0,0,1],raw={beta:0,gamma:0,alpha:0},got=false,calibrated=false,lastSend=0;
+const $=id=>document.getElementById(id);
+function status(t,ok=false){$('status').textContent=t;$('lamp').style.background=ok?'#d9a441':'#ff4b38'}
+function connect(){const k=$('code').value.trim().toUpperCase();if(k.length<4){alert('Digite o código de 4 letras que aparece no jogo.');return}
+ status('Conectando…');const pr=new Peer();pr.on('open',()=>{conn=pr.connect('lm-'+k,{reliable:false});conn.on('open',()=>{status('Conectado ao jogo',true);$('sub').textContent='Ative o giroscópio e calibre'});conn.on('close',()=>status('Desconectado'))});
+ pr.on('error',()=>status('Erro — confira o código e a internet'))}
+$('connect').onclick=connect;
+function orient(e){
+ if(e.beta==null||e.gamma==null){status('Sensor sem dados — mova o celular e confira permissões');return}
+ raw={beta:+e.beta||0,gamma:+e.gamma||0,alpha:+e.alpha||0};got=true;
+ // quaternion do celular (eixos: x direita, y topo = lâmina, z saindo da tela), igual ao jogo
+ curQ=qm(qm(qm(qa(1,raw.alpha*D),qa(0,raw.beta*D)),qa(2,-raw.gamma*D)),Q1);
+ if(!calibrated){bq=curQ;calibrated=true;status('Sensor ativo — posição inicial calibrada',true)}
+ const r=qm(qi(bq),curQ),eul=[Math.atan2(2*(r[3]*r[0]+r[1]*r[2]),1-2*(r[0]*r[0]+r[1]*r[1]))/D,Math.asin(Math.max(-1,Math.min(1,2*(r[3]*r[1]-r[2]*r[0]))))/D,Math.atan2(2*(r[3]*r[2]+r[0]*r[1]),1-2*(r[1]*r[1]+r[2]*r[2]))/D];
+ $('beta').textContent=Math.round(eul[0])+'°';$('gamma').textContent=Math.round(eul[2])+'°';$('alpha').textContent=Math.round(eul[1])+'°';
+ $('sub').textContent=(conn&&conn.open)?'Gire o pulso para balançar a arma':'Sensor ativo — toque em CONECTAR AO JOGO';
+ const now=performance.now();
+ if(conn&&conn.open&&now-lastSend>12){lastSend=now;conn.send({type:'gyro',arm,q:qm(qi(bq),curQ)})}
+}
+async function enableSensor(){
+ try{
+  if(!window.isSecureContext)throw Error('Esta página não está em contexto seguro. Abra o endereço HTTPS e confira o certificado.');
+  if(typeof DeviceOrientationEvent==='undefined')throw Error('Este navegador não oferece o sensor de orientação.');
+  if(typeof DeviceOrientationEvent.requestPermission==='function'){
+   const p=await DeviceOrientationEvent.requestPermission();if(p!=='granted')throw Error('O iPhone não concedeu permissão aos sensores.');
+  }
+  window.removeEventListener('deviceorientation',orient,true);window.addEventListener('deviceorientation',orient,true);
+  $('sensor').textContent='GIRO ATIVO ✓';status('Aguardando dados do sensor…',true);
+ }catch(e){alert('Não foi possível ativar o giroscópio: '+e.message);status('Não foi possível ativar o sensor')}
+}
+$('sensor').onclick=enableSensor;
+$('calibrate').onclick=()=>{if(!got){alert('Primeiro toque em ATIVAR GIROSCÓPIO e mova um pouco o celular.');return}bq=curQ;calibrated=true;status('Posição neutra calibrada',true)};
+$('switch').onclick=()=>{arm=1-arm;$('switch').textContent='CONTROLANDO: BRAÇO '+(arm?'ESQUERDO':'DIREITO')};
+</script></body></html>
